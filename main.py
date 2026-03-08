@@ -3,36 +3,94 @@ from settings import *
 from sounds import load_sounds
 from keys import draw_keys, create_key_rects
 from buttons import Button
+from ui.settings_menu import SettingsMenu
 
 init()
-screen = display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+
 display.set_caption("Piano Game")
 
 sounds = load_sounds(KEYS)
-key_rects = create_key_rects(len(KEYS))
-keys_list = list(KEYS.keys())
 my_font = font.SysFont("Arial", 24)
 pressed_keys = set()
 
-# кнопки меню
-def start_game(): pass
-def open_settings(): pass
+screen_mode = "main"
+settings_menu = None
+
+current_volume = 1.0
+for s in sounds.values():
+    try:
+        s.set_volume(current_volume)
+    except Exception:
+        pass
+
+
+num_keys = len(KEYS)
+keys_list = list(KEYS.keys())[:num_keys]
+key_rects = create_key_rects(num_keys)
+
+def apply_settings(volume: float, key_count: int):
+    global current_volume, num_keys, keys_list, key_rects, pressed_keys
+    current_volume = float(max(0.0, min(1.0, volume)))
+    for s in sounds.values():
+        try:
+            s.set_volume(current_volume)
+        except Exception:
+            pass
+
+    key_count = max(1, min(len(KEYS), int(key_count)))
+    if key_count != num_keys:
+        num_keys = key_count
+        keys_list = list(KEYS.keys())[:num_keys]
+        key_rects = create_key_rects(num_keys)
+        pressed_keys = {i for i in pressed_keys if i < num_keys}
+
+def open_settings():
+    global screen_mode, settings_menu
+    screen_mode = "settings"
+    settings_menu = SettingsMenu(
+        screen.get_rect(),
+        initial_volume=current_volume,
+        initial_keys=num_keys,
+        min_keys=1,
+        max_keys=len(KEYS),
+        on_change=apply_settings,
+        on_back=lambda: _back_to_main(),
+    )
+
+def _back_to_main():
+    global screen_mode, settings_menu
+    screen_mode = "main"
+    settings_menu = None
+
 def exit_game(): quit()
 
+SETTINGS_IDLE = transform.scale(
+    image.load('assets/images/buttons/settings_unhover.png'), (50, 50)
+)
+SETTINGS_HOVER = transform.scale(
+    image.load('assets/images/buttons/settings_hover.png'), (50, 50)
+)
+
 buttons = [
-    Button(60, 20, 120, 40, "Settings", open_settings)
+    Button(
+        60, 20, 50, 50,            
+        "",                         
+        open_settings,
+        img_idle=SETTINGS_IDLE,     
+        img_hover=SETTINGS_HOVER    
+    )
 ]
 
 running = True
 while running:
     screen.fill(WHITE)
+    if screen_mode == "settings" and settings_menu:
+        settings_menu.draw(screen, my_font)
+    else:
+        for button in buttons:
+            button.draw(screen, my_font)
+        draw_keys(screen, key_rects, pressed_keys)
 
-    # кнопки
-    for button in buttons:
-        button.draw(screen, my_font)
-
-    # клавіші
-    draw_keys(screen, key_rects, pressed_keys)
 
     display.flip()
 
@@ -40,26 +98,27 @@ while running:
         if e.type == QUIT:
             running = False
 
-        # кнопки
+        if screen_mode == "settings" and settings_menu:
+            settings_menu.handle_event(e)
+            continue
+
         for button in buttons:
             button.handle_event(e)
 
-        # клавіатура
         if e.type == KEYDOWN:
             k = key.name(e.key)
-            if k in sounds:
+            if k in sounds and k in keys_list:
                 sounds[k].play()
                 idx = keys_list.index(k)
                 pressed_keys.add(idx)
 
         if e.type == KEYUP:
             k = key.name(e.key)
-            if k in sounds:
+            if k in sounds and k in keys_list:
                 idx = keys_list.index(k)
                 if idx in pressed_keys:
                     pressed_keys.remove(idx)
 
-        # миша по клавішах
         if e.type == MOUSEBUTTONDOWN:
             pos = e.pos
             for i, rect in enumerate(key_rects):
